@@ -1,0 +1,21 @@
+# Run Prisma migrations against production (or staging) using a direct Neon URL.
+# Set secrets: DIRECT_URL (or DATABASE_URL if it is already non-pooled)
+name: Database migrate
+
+on:
+  workflow_dispatch:
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+      - run: npm ci
+      - name: Prisma migrate deploy
+        run: npx prisma migrate deploy
+        env:
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}

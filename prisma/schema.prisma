@@ -1,0 +1,174 @@
+// Dead Code — Postgres schema (Auth.js + app + billing)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum SubscriptionTier {
+  FREE
+  PRO
+  ENTERPRISE
+}
+
+enum AnalysisStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum FindingKind {
+  UNUSED_EXPORT
+  UNUSED_FILE
+  REDUNDANT_DEP
+  VULNERABLE_DEP
+  BARELY_USED
+  OTHER
+}
+
+// ——— Auth.js (Prisma adapter) ———
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  accounts      Account[]
+  sessions      Session[]
+
+  subscriptionTier SubscriptionTier @default(FREE)
+  repositories     Repository[]
+  subscription     Subscription?
+  settings         UserSettings?
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ——— App ———
+
+model Repository {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  githubId      Int
+  fullName      String
+  defaultBranch String   @default("main")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  analysisRuns AnalysisRun[]
+
+  @@unique([userId, githubId])
+  @@index([userId])
+}
+
+model AnalysisRun {
+  id           String         @id @default(cuid())
+  repositoryId String
+  repository   Repository     @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  status       AnalysisStatus @default(PENDING)
+  commitSha    String?
+  error        String?        @db.Text
+  startedAt    DateTime?
+  finishedAt   DateTime?
+  createdAt    DateTime       @default(now())
+  /// Snapshot: contributors, debt summary, ranked highlights (see RunInsightsV1 in code).
+  insights     Json?
+  /// Import / module graph (see CodeGraphV1 in code).
+  codeGraph    Json?
+
+  fileMetrics FileMetric[]
+  findings    Finding[]
+
+  @@index([repositoryId, createdAt])
+}
+
+model FileMetric {
+  id            String      @id @default(cuid())
+  analysisRunId String
+  analysisRun   AnalysisRun @relation(fields: [analysisRunId], references: [id], onDelete: Cascade)
+  path          String
+  metrics       Json
+
+  @@index([analysisRunId, path])
+}
+
+model Finding {
+  id            String      @id @default(cuid())
+  analysisRunId String
+  analysisRun   AnalysisRun @relation(fields: [analysisRunId], references: [id], onDelete: Cascade)
+  kind          FindingKind
+  path          String
+  symbol        String?
+  severity      String
+  evidence      String?     @db.Text
+  toolId        String
+
+  @@index([analysisRunId])
+}
+
+model UserSettings {
+  id                     String    @id @default(cuid())
+  userId                 String    @unique
+  user                   User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  notifyAnalysisComplete Boolean   @default(true)
+  /// Set when the user dismisses the dashboard onboarding checklist.
+  onboardingDismissedAt  DateTime?
+  /// JSON array of picomatch-style globs (e.g. `**/generated/**`) excluded from metrics & findings.
+  pathIgnoreGlobs        Json      @default("[]")
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+}
+
+// ——— Stripe (synced via webhooks) ———
+
+model Subscription {
+  id                   String   @id @default(cuid())
+  userId               String   @unique
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stripeCustomerId     String?  @unique
+  stripeSubscriptionId String?  @unique
+  stripePriceId        String?
+  status               String
+  currentPeriodEnd     DateTime?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+}

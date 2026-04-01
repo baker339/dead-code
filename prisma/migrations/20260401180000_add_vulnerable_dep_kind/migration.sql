@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "FindingKind" ADD VALUE 'VULNERABLE_DEP';
