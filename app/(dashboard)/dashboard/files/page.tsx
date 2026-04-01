@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { FileMetric } from "@prisma/client";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
 import { AnalysisRunsPoller } from "@/components/analysis-runs-poller";
@@ -23,6 +24,13 @@ const KIND_SHORT: Record<string, string> = {
   VULNERABLE_DEP: "vulnerable package (lockfile audit)",
   BARELY_USED: "unused + long idle",
   OTHER: "other static issue",
+};
+
+type PathFinding = {
+  kind: string;
+  symbol: string | null;
+  toolId: string;
+  evidence: string | null;
 };
 
 export default async function FilesPage() {
@@ -110,15 +118,7 @@ export default async function FilesPage() {
     );
   }
 
-  const findingsByPath = new Map<
-    string,
-    {
-      kind: string;
-      symbol: string | null;
-      toolId: string;
-      evidence: string | null;
-    }[]
-  >();
+  const findingsByPath = new Map<string, PathFinding[]>();
   for (const f of latestRun.findings) {
     const k = f.path.replace(/\\/g, "/");
     const arr = findingsByPath.get(k) ?? [];
@@ -198,12 +198,12 @@ export default async function FilesPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-100">
-              {latestRun.fileMetrics.map((row) => {
+              {latestRun.fileMetrics.map((row: FileMetric) => {
                 const m = row.metrics as MetricJson;
                 const norm = row.path.replace(/\\/g, "/");
-                const findings = findingsByPath.get(norm) ?? [];
+                const findings: PathFinding[] = findingsByPath.get(norm) ?? [];
                 const title = findings
-                  .map((f) => {
+                  .map((f: PathFinding) => {
                     const head = `[${KIND_SHORT[f.kind] ?? f.kind}] ${f.symbol ?? "—"} (${f.toolId})`;
                     if (f.evidence?.trim()) {
                       return `${head}\n${f.evidence}`;
@@ -262,7 +262,7 @@ export default async function FilesPage() {
                               {findings
                                 .slice(0, 2)
                                 .map(
-                                  (f) =>
+                                  (f: PathFinding) =>
                                     KIND_SHORT[f.kind] ??
                                     f.kind.toLowerCase(),
                                 )
@@ -270,15 +270,20 @@ export default async function FilesPage() {
                               {findings.length > 2 ? "…" : ""})
                             </span>
                           </span>
-                          {findings.some((f) => f.kind === "VULNERABLE_DEP") && (
+                          {findings.some(
+                            (f: PathFinding) => f.kind === "VULNERABLE_DEP",
+                          ) && (
                             <details className="mt-1.5 rounded border border-zinc-200 bg-zinc-50/90 px-2 py-1.5">
                               <summary className="cursor-pointer text-sm font-medium text-zinc-700">
                                 Advisory links
                               </summary>
                               <div className="mt-2 space-y-2 border-t border-zinc-100 pt-2">
                                 {findings
-                                  .filter((f) => f.kind === "VULNERABLE_DEP")
-                                  .map((f, i) => (
+                                  .filter(
+                                    (f: PathFinding) =>
+                                      f.kind === "VULNERABLE_DEP",
+                                  )
+                                  .map((f: PathFinding, i: number) => (
                                     <div
                                       key={`${f.symbol ?? "pkg"}-${f.toolId}-${i}`}
                                     >
