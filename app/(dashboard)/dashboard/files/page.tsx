@@ -1,5 +1,5 @@
 import Link from "next/link";
-import type { FileMetric } from "@prisma/client";
+import type { Prisma } from "@prisma/client";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
 import { AnalysisRunsPoller } from "@/components/analysis-runs-poller";
@@ -31,6 +31,13 @@ type PathFinding = {
   symbol: string | null;
   toolId: string;
   evidence: string | null;
+};
+
+/** Shape used when rendering `fileMetrics` rows (avoids relying on model re-exports from `@prisma/client`). */
+type FileMetricRow = {
+  id: string;
+  path: string;
+  metrics: Prisma.JsonValue;
 };
 
 export default async function FilesPage() {
@@ -198,7 +205,7 @@ export default async function FilesPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-100">
-              {latestRun.fileMetrics.map((row: FileMetric) => {
+              {latestRun.fileMetrics.map((row: FileMetricRow) => {
                 const m = row.metrics as MetricJson;
                 const norm = row.path.replace(/\\/g, "/");
                 const findings: PathFinding[] = findingsByPath.get(norm) ?? [];
